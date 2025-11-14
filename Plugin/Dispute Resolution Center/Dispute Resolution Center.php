@@ -81,10 +81,17 @@ function pl_get_seller_user_id(string $prefer = 'any'): int {
   return pl_req_int('seller_user_id', $prefer);
 }
 
-// Function: pl_get_seller_user_id_from_order — Read seller_user_id ACF on the WC Order.
+// Function: pl_get_seller_user_id_from_order — Read seller_user_id from vendoruser ACF field on the WC Order.
 function pl_get_seller_user_id_from_order(WC_Order $order): int {
-  $seller_user_id = get_field('seller_user_id', $order->get_id());
+  // Get seller user ID from the 'vendoruser' ACF field
+  $seller_user_id = get_field('vendoruser', $order->get_id());
   return (int) $seller_user_id;
+}
+
+// Function: pl_get_buyer_user_id_from_order — Read buyer_user_id from WC Order customer.
+function pl_get_buyer_user_id_from_order(WC_Order $order): int {
+  // Get buyer user ID from WooCommerce order customer
+  return (int) $order->get_user_id();
 }
 
 
@@ -114,8 +121,8 @@ function pl_dispute_current_user_is_party_for_order(): bool {
   if (!$buyer_uid || !$seller_uid) {
     $order = wc_get_order($order_id);
     if ($order instanceof WC_Order) {
-      if (!$buyer_uid)  $buyer_uid  = (int) $order->get_user_id();
-      if (!$seller_uid) $seller_uid = (int) pl_get_seller_user_id_from_order($order);
+      if (!$buyer_uid)  $buyer_uid  = pl_get_buyer_user_id_from_order($order);
+      if (!$seller_uid) $seller_uid = pl_get_seller_user_id_from_order($order);
     }
   }
 
@@ -326,7 +333,7 @@ add_filter('gform_field_value_order_status', function ($value) {
   return ($order instanceof WC_Order) ? $order->get_status() : $value;
 });
 
-// Filter: gform_field_value_buyer_user_id — Populate buyer_user_id (URL/POST first, then Woo).
+// Filter: gform_field_value_buyer_user_id — Populate buyer_user_id from WooCommerce order customer.
 add_filter('gform_field_value_buyer_user_id', function ($value) {
   $url_buyer = pl_get_buyer_user_id();
   if ($url_buyer) return $url_buyer;
@@ -335,10 +342,10 @@ add_filter('gform_field_value_buyer_user_id', function ($value) {
   if (!$oid) return $value;
 
   $order = wc_get_order($oid);
-  return ($order instanceof WC_Order) ? (int)$order->get_user_id() : $value;
+  return ($order instanceof WC_Order) ? pl_get_buyer_user_id_from_order($order) : $value;
 });
 
-// Filter: gform_field_value_seller_user_id — Populate seller_user_id (URL/POST first, then Woo/ACF).
+// Filter: gform_field_value_seller_user_id — Populate seller_user_id from vendoruser ACF field.
 add_filter('gform_field_value_seller_user_id', function ($value) {
   $url_seller = pl_get_seller_user_id();
   if ($url_seller) return $url_seller;
@@ -390,7 +397,7 @@ function pl_dispute_ticket_defaults($form) {
           if ($ovr_buyer_uid) {
             $field->defaultValue = (int) $ovr_buyer_uid;
           } elseif ($order instanceof WC_Order) {
-            $field->defaultValue = (int) $order->get_user_id();
+            $field->defaultValue = pl_get_buyer_user_id_from_order($order);
           }
         }
         break;
@@ -430,7 +437,7 @@ add_action('woocommerce_order_status_changed', function ($order_id, $old_status,
         'field_filters' => array(
             'mode' => 'all',
             array(
-                'key'   => (string) PL_F_T_ORDER_ID,   // فیلد order_id در فرم تیکت
+                'key'   => (string) PL_F_T_ORDER_ID,
                 'value' => (string) $order_id,
             ),
         ),
